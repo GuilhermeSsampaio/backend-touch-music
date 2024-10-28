@@ -54,8 +54,8 @@ Este é um projeto de exemplo usando FastAPI para criar uma API simples.
 Crie um arquivo `.env` na raiz do projeto e adicione suas variáveis de ambiente:
 
 ```
-URL=https://blob.squarecloud.app/v1/objects
-518AUTHORIZATION=ed0262c96560c19e17a459bad487451640343-da78c4413490d9ce905b7a09eeb552ee3f4c5aed0fa876d45c85cac98b60d166
+URL=
+SQUARECLOUD_API_KEY=
 ```
 
 ## Executando o Projeto
