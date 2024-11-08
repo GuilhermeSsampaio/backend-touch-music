@@ -3,4 +3,7 @@
 py_cache/
 __pycache__/
 .venv/
+.vscode
+.pytest_cache/
 venv
+uploads/
