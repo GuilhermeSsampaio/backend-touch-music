@@ -6,6 +6,7 @@ from pydub import AudioSegment
 import logging
 import librosa
 import numpy as np
+import librosa.display
 
 router = APIRouter()
 
@@ -50,6 +51,34 @@ def extract_pitch(file_path: str) -> str:
         logging.exception("Erro ao extrair o tom da música")
         raise HTTPException(status_code=500, detail=f"Erro ao extrair o tom da música: {str(e)}")
 
+def extract_chords(file_path: str) -> list:
+    try:
+        y, sr = librosa.load(file_path)
+        
+        # Calcular o cromagrama
+        chroma = librosa.feature.chroma_cqt(y=y, sr=sr)
+        
+        # Estimar acordes com base nas médias de energia de cada bloco de cromagrama
+        chords = []
+        previous_chord = None
+        for i in range(chroma.shape[1]):
+            # Calcula a média de energia para cada pitch no bloco atual
+            chroma_block = chroma[:, i]
+            if np.sum(chroma_block) > 0:  # Verificar se há energia significativa no bloco
+                root_note = np.argmax(chroma_block)  # Encontrar o pitch dominante no bloco
+                note = librosa.hz_to_note(librosa.midi_to_hz(root_note + 12))  # Adapta para a nota correspondente
+                if note != previous_chord:
+                    chords.append(note)
+                    previous_chord = note
+            else:
+                if previous_chord != "N":
+                    chords.append("N")  # N indica nenhum acorde detectável no bloco
+                    previous_chord = "N"
+        return chords
+    except Exception as e:
+        logging.exception("Erro ao extrair os acordes da música")
+        raise HTTPException(status_code=500, detail=f"Erro ao extrair os acordes da música: {str(e)}")
+
 
 @router.post("/process_audio")
 async def process_audio(file: UploadFile = File(...)):
@@ -72,10 +101,14 @@ async def process_audio(file: UploadFile = File(...)):
 
         # Extração do tom da música
         note = extract_pitch(converted_file_location)
+
+        # Extração dos acordes da música
+        chords = extract_chords(converted_file_location)
     except (sr.UnknownValueError, sr.RequestError, ValueError) as e:
         raise HTTPException(status_code=500, detail=f"Erro ao processar o áudio: {str(e)}")
     
     return {
         "text": text,
-        "note": note
+        "note": note,
+        "chords": chords
     }
