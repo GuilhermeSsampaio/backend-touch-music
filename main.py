@@ -2,8 +2,8 @@ from fastapi import FastAPI, File, UploadFile, HTTPException  # Importando HTTPE
 import os
 import shutil
 import speech_recognition as sr
-import librosa
-import numpy as np
+from pydub import AudioSegment
+import logging
 
 app = FastAPI()
 
@@ -27,34 +27,41 @@ async def create_upload_file(file: UploadFile = File(...)):
         shutil.copyfileobj(file.file, buffer)
     return {"info": f"file '{file.filename}' saved at '{file_location}'"}
 
+def convert_audio(file_path: str, target_format: str = 'wav') -> str:
+    try:
+        # Verifica se o FFmpeg está instalado
+        if not shutil.which("ffmpeg"):
+            raise HTTPException(status_code=500, detail="FFmpeg não está instalado ou não está no PATH do sistema.")
+        
+        audio = AudioSegment.from_file(file_path)
+        converted_file_path = f"{os.path.splitext(file_path)[0]}.{target_format}"
+        audio.export(converted_file_path, format=target_format)
+        return converted_file_path
+    except Exception as e:
+        logging.exception("Erro ao converter o arquivo de áudio")
+        raise HTTPException(status_code=500, detail=f"Erro ao converter o arquivo de áudio: {str(e)}")
+
 @app.post("/process_audio")
-async def process_audio(filename: str):
-    file_location = f"{UPLOAD_DIRECTORY}/{filename}" 
-    
-    if not os.path.exists(file_location):
-        raise HTTPException(status_code=404, detail="File not found")
+async def process_audio(file: UploadFile = File(...)):
+    file_location = f"{UPLOAD_DIRECTORY}/{file.filename}"
+    with open(file_location, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
     
     if not file_location.endswith(('.wav', '.flac', '.ogg', '.au', '.mp3')):
         raise HTTPException(status_code=400, detail="Formato de arquivo não suportado")
 
-    
-    # Reconhecimento de fala
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(file_location) as source:
-        audio = recognizer.record(source)
-        text = recognizer.recognize_google(audio, language="pt-BR")
-        
-    # Análise de áudio com librosa
-    y, sample_rate = librosa.load(file_location)
-    tempo, beat_frames = librosa.beat.beat_track(y=y, sr=sample_rate)
-    chroma = librosa.feature.chroma_cqt(y=y, sr=sample_rate)
-    
-    # Estimação de acordes (simplificada)
-    chords = librosa.decompose.decompose(chroma, n_components=8)
+    try:
+        # Converte o arquivo de áudio para WAV
+        converted_file_location = convert_audio(file_location, 'wav')
+
+        # Reconhecimento de fala
+        recognizer = sr.Recognizer()
+        with sr.AudioFile(converted_file_location) as source:
+            audio = recognizer.record(source)
+            text = recognizer.recognize_google(audio, language="pt-BR")
+    except (sr.UnknownValueError, sr.RequestError, ValueError) as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao processar o áudio: {str(e)}")
     
     return {
-        "text": text,
-        "tempo": tempo,
-        "chroma_shape": chroma.shape,
-        "chords": chords.tolist()
+        "text": text
     }
